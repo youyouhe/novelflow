@@ -1,7 +1,3 @@
-<div align="center">
-<img width="1200" height="475" alt="NovelFlow Banner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
 # NovelFlow
 
 **NovelFlow** is a professional fiction writing environment featuring a dedicated Codex (Wiki) system that integrates deeply with Google Gemini AI to maintain story consistency, character voice, and world-building rules during AI-assisted writing.
