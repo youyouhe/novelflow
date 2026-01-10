@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
-import { Scene, CodexEntry, AIConfig, WritingLanguage, KeyboardConfig, CodexCategory, Chapter, StoryStructureContext, ExplicitAction } from '../types';
+import { Scene, CodexEntry, AIConfig, WritingLanguage, KeyboardConfig, CodexCategory, Chapter, StoryStructureContext, ExplicitAction, NarrativePerspective, TargetAudience, WritingTone, StoryTheme } from '../types';
 import { generateStoryContinuation, generateSmartContinuation, extractEntitiesFromText, generateImageDescription, generateImage } from '../services/aiService';
 import { Icons, AI_CONTINUATION_MODES, CODEX_HIGHLIGHT_COLORS } from '../constants';
 import { useI18n } from '../i18n';
@@ -26,12 +26,61 @@ interface EditorProps {
   aiConfig: AIConfig;
   writingLanguage: WritingLanguage;
   shortcuts: KeyboardConfig;
-  projectInfo: { title: string, genre: string, subgenre?: string };
+  projectInfo: {
+    title: string;
+    genre: string;
+    subgenre?: string;
+    description?: string;
+    targetAudience?: TargetAudience;
+    narrativePerspective?: NarrativePerspective;
+    writingTone?: WritingTone;
+    themes?: StoryTheme[];
+  };
 }
 
 const PAGE_HEIGHT_PX = 1123; // A4 height in pixels at 96 DPI
 const FILL_RATIO = 0.95;
 const MAX_PAGE_CONTENT_HEIGHT = PAGE_HEIGHT_PX * FILL_RATIO;
+
+// Helper to generate fallback scene titles based on genre
+const generateFallbackSceneTitle = (sceneIndex: number, genre?: string): string => {
+  const titlesByGenre: Record<string, string[]> = {
+    'Fantasy': ['The Hidden Path', 'Whispers in the Dark', 'The Ancient Promise', 'Shadows Rising', 'The Fateful Encounter'],
+    '玄幻奇幻': ['隐秘之路', '黑暗低语', '远古誓言', '阴影升起', '宿命相遇'],
+    'Xianxia/Wuxia': ['Breakthrough', 'The Challenge', 'Sword Drawn', 'Cultivation Progress', 'The Duel'],
+    '仙侠武侠': ['突破', '挑战', '拔剑', '修为精进', '决战'],
+    'Urban': ['A New Day', 'Unexpected Visitor', 'Late Night Call', 'The Decision', 'Changes'],
+    '都市': ['新的一天', '不速之客', '深夜来电', '决定', '变化'],
+    'Sci-Fi/Apocalypse': ['Signal Received', 'The Discovery', 'System Alert', 'Beyond the Wall', 'Contact'],
+    '科幻': ['收到信号', '发现', '系统警报', '墙外', '接触'],
+    'Suspense/Mystery': ['The Clue', 'Hidden Truth', 'Following Leads', 'The Reveal', 'Suspicion'],
+    '悬疑': ['线索', '隐藏的真相', '追踪', '揭露', '怀疑'],
+    'History/Military': ['The Battle Begins', 'Strategy Meeting', 'March to War', 'The Siege', 'Victory'],
+    '历史军事': ['战斗开始', '战略会议', '进军', '围攻', '胜利'],
+  };
+
+  const genreKey = Object.keys(titlesByGenre).find(k => genre?.includes(k));
+  const genreTitles = genreKey ? titlesByGenre[genreKey] : ['Scene Continuation', 'The Next Chapter', 'Moving Forward', 'A New Beginning'];
+
+  return genreTitles[sceneIndex % genreTitles.length];
+};
+
+// Helper to generate fallback chapter titles based on genre
+const generateFallbackChapterTitle = (genre?: string): string => {
+  const titlesByGenre: Record<string, string[]> = {
+    'Fantasy': ['The Awakening', 'Into the Unknown', 'Rising Storm', 'Shadows and Light', 'The Final Stand'],
+    '玄幻奇幻': ['觉醒', '踏入未知', '风暴来袭', '光影交错', '最终之战'],
+    'Urban': ['New Beginnings', 'Crossroads', 'Turning Points', 'Revelations', 'Moving On'],
+    '都市': ['新的开始', '十字路口', '转折点', '真相', '前行'],
+    'Sci-Fi': ['First Contact', 'The Signal', 'System Failure', 'Beyond Earth', 'New Horizons'],
+    '科幻': ['初次接触', '信号', '系统故障', '地球之外', '新地平线'],
+  };
+
+  const genreKey = Object.keys(titlesByGenre).find(k => genre?.includes(k));
+  const genreTitles = genreKey ? titlesByGenre[genreKey] : ['Continuing On', 'The Journey', 'Next Steps'];
+
+  return genreTitles[Math.floor(Math.random() * genreTitles.length)];
+};
 
 // Helper to count words (supporting CJK)
 const countWords = (text: string) => {
@@ -250,6 +299,11 @@ const Editor = forwardRef<EditorRef, EditorProps>(({ activeChapter, activeScene,
         projectTitle: projectInfo.title,
         genre: projectInfo.genre,
         subgenre: projectInfo.subgenre,
+        description: projectInfo.description,
+        targetAudience: projectInfo.targetAudience,
+        narrativePerspective: projectInfo.narrativePerspective,
+        writingTone: projectInfo.writingTone,
+        themes: projectInfo.themes,
         chapterTitle: activeChapter.title,
         sceneTitle: activeScene.title,
         sceneIndex: sceneIndex,
@@ -257,7 +311,9 @@ const Editor = forwardRef<EditorRef, EditorProps>(({ activeChapter, activeScene,
         previousSceneSummary: prevScene?.summary,
         currentSceneWordCount: currentWordCount,
         currentScenePageCount: pages.length,
-        currentPageIndex: targetIndex
+        currentPageIndex: targetIndex,
+        targetSceneWordCount: aiConfig.targetSceneWordCount,
+        targetScenesPerChapter: aiConfig.targetSceneCountPerChapter
     };
 
     setIsGenerating(true);
@@ -283,11 +339,13 @@ const Editor = forwardRef<EditorRef, EditorProps>(({ activeChapter, activeScene,
 
       if (result.action === 'new_scene' && onCreateScene) {
           // Handle creation of new scene
-          onCreateScene(result.title || "New Scene", result.content);
+          const sceneTitle = result.title || generateFallbackSceneTitle(activeChapter.scenes.length + 1, structureContext?.genre);
+          onCreateScene(sceneTitle, result.content);
           newContentAdded = result.content;
       } else if (result.action === 'new_chapter' && onCreateChapter) {
           // Handle creation of new chapter
-          onCreateChapter(result.title || "New Chapter", "Opening", result.content);
+          const chapterTitle = result.title || `Chapter 2: ${generateFallbackChapterTitle(structureContext?.genre)}`;
+          onCreateChapter(chapterTitle, t('editor.opening_scene') || "Opening", result.content);
           newContentAdded = result.content;
       } else {
           // Standard continuation (append)

@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, CodexEntry, AIConfig, WritingLanguage, Scene, Chapter } from '../types';
+import { ChatMessage, CodexEntry, AIConfig, WritingLanguage, Scene, Chapter, StoryStructureContext, NarrativePerspective, TargetAudience, WritingTone, StoryTheme } from '../types';
 import { Icons } from '../constants';
 import { chatWithCodex } from '../services/aiService';
 import { useI18n } from '../i18n';
@@ -10,14 +10,29 @@ interface ChatPanelProps {
   codex: CodexEntry[];
   aiConfig: AIConfig;
   writingLanguage: WritingLanguage;
+  projectInfo?: {
+    title?: string;
+    genre?: string;
+    subgenre?: string;
+    description?: string;
+    targetAudience?: TargetAudience;
+    narrativePerspective?: NarrativePerspective;
+    writingTone?: WritingTone;
+    themes?: StoryTheme[];
+  };
+  structureContext?: StoryStructureContext;
   activeScene?: Scene;
   activeChapter?: Chapter;
+  allChapters?: Chapter[];
+  pendingSceneReference?: string;
+  onSceneReferenceInserted?: () => void;
 }
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ codex, aiConfig, writingLanguage, activeScene, activeChapter }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ codex, aiConfig, writingLanguage, projectInfo, structureContext, activeScene, activeChapter, allChapters, pendingSceneReference, onSceneReferenceInserted }) => {
   const { t } = useI18n();
   const { colorClasses } = useTheme();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   // Initialize welcome message when language changes or first load
   useEffect(() => {
@@ -34,6 +49,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ codex, aiConfig, writingLanguage,
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (pendingSceneReference && !loading) {
+      setInput(prev => {
+        const cursorPos = textareaRef.current?.selectionStart || prev.length;
+        const before = prev.slice(0, cursorPos);
+        const after = prev.slice(cursorPos);
+        return before + pendingSceneReference + ' ' + after;
+      });
+      onSceneReferenceInserted?.();
+
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 0);
+    }
+  }, [pendingSceneReference, loading, onSceneReferenceInserted]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -57,13 +88,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ codex, aiConfig, writingLanguage,
 
     try {
       const responseText = await chatWithCodex(
-          messages.concat(userMsg), 
-          input, 
-          codex, 
-          writingLanguage, 
+          messages.concat(userMsg),
+          input,
+          codex,
+          writingLanguage,
           aiConfig,
+          projectInfo,
+          structureContext,
           activeScene,
-          activeChapter
+          activeChapter,
+          allChapters
       );
       
       const aiMsg: ChatMessage = {
@@ -128,18 +162,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ codex, aiConfig, writingLanguage,
       <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
         <div className="relative">
           <textarea
-            className={`w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg pl-3 pr-10 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none ${colorClasses.ring} resize-none`}
-            rows={3}
-            placeholder={t('chat.placeholder')}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-          />
+            ref={textareaRef}
+             className={`w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg pl-3 pr-10 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none ${colorClasses.ring} resize-none`}
+             rows={3}
+             placeholder={t('chat.placeholder')}
+             value={input}
+             onChange={(e) => setInput(e.target.value)}
+             onKeyDown={(e) => {
+               if (e.key === 'Enter' && !e.shiftKey) {
+                 e.preventDefault();
+                 handleSend();
+               }
+             }}
+           />
           <button 
             onClick={handleSend}
             disabled={loading || !input.trim()}
@@ -148,9 +183,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ codex, aiConfig, writingLanguage,
             <Icons.Send />
           </button>
         </div>
-        <p className="text-[10px] text-slate-400 dark:text-slate-600 text-center mt-2 flex justify-center items-center gap-1">
-          <Icons.Server /> {aiConfig.provider === 'gemini' ? 'Gemini 3 Flash' : 'DeepSeek V3'}
-        </p>
+         <p className="text-[10px] text-slate-400 dark:text-slate-600 text-center mt-2 flex justify-center items-center gap-1">
+           <Icons.Server /> {aiConfig.provider === 'gemini' ? 'Gemini 3 Flash' : 'DeepSeek V3'}
+         </p>
+         {allChapters && allChapters.length > 0 && (
+           <p className="text-[10px] text-slate-300 dark:text-slate-700 text-center mt-1">
+             💡 引用示例：@第一章.第二scene
+           </p>
+         )}
       </div>
     </div>
   );

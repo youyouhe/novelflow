@@ -284,25 +284,38 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                         {/* Project Cards */}
                         {sortedProjects.map(project => (
-                            <div 
+                            <div
                                 key={project.id}
                                 onClick={() => onSelectProject(project.id)}
-                                className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200 flex flex-col h-48 cursor-pointer relative group"
+                                className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200 flex flex-col h-52 cursor-pointer relative group"
                             >
                                 <div className="p-5 flex-1 flex flex-col">
                                     <div className="flex justify-between items-start mb-2">
-                                        <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500`}>
-                                            {project.genre || 'Fiction'}
-                                        </span>
+                                        {/* Genre badges */}
+                                        <div className="flex flex-wrap gap-1">
+                                            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                                                {project.genre || 'Fiction'}
+                                            </span>
+                                            {project.subgenre && (
+                                                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                                    {project.subgenre}
+                                                </span>
+                                            )}
+                                            {project.targetAudience && project.targetAudience !== 'general' && (
+                                                <span className="text-[10px] px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                                                    {t(`audience.${project.targetAudience}`) || project.targetAudience}
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="flex gap-1">
-                                             <button 
+                                             <button
                                                 onClick={(e) => handlePublishClick(e, project)}
                                                 className={`text-slate-300 hover:text-blue-500 transition-colors p-1`}
                                                 title={t('dashboard.publish')}
                                             >
                                                 <Icons.Globe />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={(e) => handleDelete(e, project.id)}
                                                 className="text-slate-300 hover:text-red-500 transition-colors p-1"
                                                 title={t('codex.delete')}
@@ -311,13 +324,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             </button>
                                         </div>
                                     </div>
-                                    
+
                                     <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 line-clamp-2 mb-1">
                                         {project.title}
                                     </h3>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">
                                         {project.author}
                                     </p>
+
+                                    {/* Description snippet */}
+                                    {project.description && (
+                                        <p className="text-xs text-slate-600 dark:text-slate-500 line-clamp-2 mt-auto">
+                                            {project.description}
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs text-slate-400 bg-slate-50/50 dark:bg-slate-950/50 rounded-b-xl">

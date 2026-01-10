@@ -45,6 +45,16 @@ const countProjectWords = (project: Project): number => {
     }, 0);
 };
 
+// Migration helper for backward compatibility
+const migrateProject = (project: any): Project => {
+    return {
+        ...project,
+        genre: project.genre || 'Fiction',
+        subgenre: project.subgenre || 'General',
+        // New fields are optional, no need to set defaults
+    };
+};
+
 const App: React.FC = () => {
   const { t, language, setLanguage } = useI18n();
   const { colorClasses, mode, setMode } = useTheme();
@@ -98,6 +108,8 @@ const App: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
+  const [pendingSceneReference, setPendingSceneReference] = useState<string>('');
+
   // AI & Shortcut Config
   const [aiConfig, setAiConfig] = useState<AIConfig>(() => {
       try {
@@ -143,6 +155,9 @@ const App: React.FC = () => {
               author: project.author,
               genre: project.genre,
               subgenre: project.subgenre,
+              description: project.description,
+              targetAudience: project.targetAudience,
+              narrativePerspective: project.narrativePerspective,
               writingLanguage: project.writingLanguage,
               lastModified: now,
               wordCount: countProjectWords(project),
@@ -272,7 +287,7 @@ const App: React.FC = () => {
       const data = localStorage.getItem(`novelflow_data_${id}`);
       if (data) {
           try {
-              const p = JSON.parse(data);
+              const p = migrateProject(JSON.parse(data));
               setActiveProject(p);
               if (p.chapters.length > 0 && p.chapters[0].scenes.length > 0) {
                   setActiveSceneId(p.chapters[0].scenes[0].id);
@@ -335,6 +350,21 @@ const App: React.FC = () => {
       editorRef.current?.scrollToPage(pageIndex);
     }, activeSceneId === sceneId ? 0 : 300);
   }, [activeSceneId]);
+
+  const handleSceneReferenceInsert = useCallback((
+    displayText: string,
+    chapterTitle: string,
+    sceneTitle?: string
+  ) => {
+    setPendingSceneReference(displayText);
+    if (rightPanelMode !== 'Chat') {
+      setRightPanelMode('Chat');
+    }
+  }, [rightPanelMode]);
+
+  const handleSceneReferenceInserted = useCallback(() => {
+    setPendingSceneReference('');
+  }, []);
 
   const handleToggleScenePages = useCallback((sceneId: string) => {
     setExpandedScenes(prev => {
@@ -822,13 +852,14 @@ const App: React.FC = () => {
       {/* CENTER */}
       <div className="flex-1 flex flex-col min-w-0">
         {viewMode === ViewMode.Plan ? (
-           <Storyboard 
+           <Storyboard
               chapters={activeProject.chapters}
               onSceneSelect={(id) => {
                  setActiveSceneId(id);
                  setViewMode(ViewMode.Write);
               }}
               onSceneUpdate={handleSceneUpdate}
+              onSceneReferenceInsert={handleSceneReferenceInsert}
            />
         ) : activeScene ? (
           <Editor
@@ -844,7 +875,16 @@ const App: React.FC = () => {
              aiConfig={aiConfig}
              writingLanguage={activeProject.writingLanguage || 'en'}
              shortcuts={shortcuts}
-             projectInfo={{ title: activeProject.title, genre: activeProject.genre || '', subgenre: activeProject.subgenre }}
+             projectInfo={{
+               title: activeProject.title,
+               genre: activeProject.genre || 'Fiction',
+               subgenre: activeProject.subgenre || 'General',
+               description: activeProject.description,
+               targetAudience: activeProject.targetAudience,
+               narrativePerspective: activeProject.narrativePerspective,
+               writingTone: activeProject.writingTone,
+               themes: activeProject.themes
+             }}
              onActivePageChange={handleActivePageChange}
              onPageCountChange={handlePageCountChange}
            />
@@ -901,12 +941,42 @@ const App: React.FC = () => {
                 currentSceneContent={activeScene?.content}
               />
             ) : (
-              <ChatPanel 
-                  codex={activeProject.codex} 
-                  aiConfig={aiConfig} 
+              <ChatPanel
+                  codex={activeProject.codex}
+                  aiConfig={aiConfig}
                   writingLanguage={activeProject.writingLanguage || 'en'}
+                  projectInfo={{
+                    title: activeProject.title,
+                    genre: activeProject.genre,
+                    subgenre: activeProject.subgenre,
+                    description: activeProject.description,
+                    targetAudience: activeProject.targetAudience,
+                    narrativePerspective: activeProject.narrativePerspective,
+                    writingTone: activeProject.writingTone,
+                    themes: activeProject.themes
+                  }}
+                  structureContext={activeChapter && activeScene ? {
+                    projectTitle: activeProject.title,
+                    genre: activeProject.genre,
+                    subgenre: activeProject.subgenre,
+                    description: activeProject.description,
+                    targetAudience: activeProject.targetAudience,
+                    narrativePerspective: activeProject.narrativePerspective,
+                    writingTone: activeProject.writingTone,
+                    themes: activeProject.themes,
+                    chapterTitle: activeChapter.title,
+                    sceneTitle: activeScene.title,
+                    sceneIndex: activeChapter.scenes.findIndex((s: Scene) => s.id === activeScene.id),
+                    totalScenesInChapter: activeChapter.scenes.length,
+                    previousSceneSummary: activeChapter.scenes[activeChapter.scenes.findIndex((s: Scene) => s.id === activeScene.id) - 1]?.summary,
+                    targetSceneWordCount: aiConfig.targetSceneWordCount,
+                    targetScenesPerChapter: aiConfig.targetSceneCountPerChapter
+                  } : undefined}
                   activeScene={activeScene}
                   activeChapter={activeChapter}
+                  allChapters={activeProject.chapters}
+                  pendingSceneReference={pendingSceneReference}
+                  onSceneReferenceInserted={handleSceneReferenceInserted}
               />
             )}
           </div>

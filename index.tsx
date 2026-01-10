@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { I18nProvider } from './i18n';
 import { ThemeProvider } from './theme';
+import './index.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
