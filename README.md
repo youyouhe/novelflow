@@ -1,5 +1,7 @@
 # NovelFlow
 
+**Languages**: [English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
+
 **NovelFlow** is a professional fiction writing environment featuring a dedicated Codex (Wiki) system that integrates deeply with Google Gemini AI to maintain story consistency, character voice, and world-building rules during AI-assisted writing.
 
 ## Features
