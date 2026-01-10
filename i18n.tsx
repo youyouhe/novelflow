@@ -132,6 +132,7 @@ const en: Translations = {
   'editor.gen_image': 'Generate Image',
   'editor.generating_image': 'Painting...',
   'editor.draft_mode': 'Draft Mode',
+  'editor.opening_scene': 'Opening',
 
   // Modal - New Project
   'modal.new_project.title': 'Create New Project',
@@ -145,6 +146,31 @@ const en: Translations = {
   'modal.new_project.generating': 'Generating Opening...',
   'modal.new_project.cancel': 'Cancel',
   'modal.new_project.writing_lang': 'Writing Language (for AI)',
+  'modal.new_project.advanced_settings': 'Advanced Settings (Optional)',
+  'modal.new_project.description': 'Story Synopsis',
+  'modal.new_project.description_placeholder': 'Brief description of your story...',
+  'modal.new_project.target_audience': 'Target Audience',
+  'modal.new_project.narrative_perspective': 'Narrative Perspective',
+  'modal.new_project.writing_tone': 'Writing Tone',
+
+  // Audience options
+  'audience.general': 'General Audience',
+  'audience.young_adult': 'Young Adult',
+  'audience.adult': 'Adult',
+  'audience.children': 'Children',
+
+  // Perspective options
+  'perspective.first_person': 'First Person (I)',
+  'perspective.third_limited': 'Third Person Limited',
+  'perspective.third_omniscient': 'Third Person Omniscient',
+  'perspective.second_person': 'Second Person (You)',
+
+  // Tone options
+  'tone.conversational': 'Conversational',
+  'tone.formal': 'Formal',
+  'tone.poetic': 'Poetic',
+  'tone.casual': 'Casual',
+  'tone.academic': 'Academic',
 
   // History Modal
   'history.title': 'Project Snapshots',
@@ -318,6 +344,7 @@ const zh: Translations = {
   'editor.gen_image': '生成配图',
   'editor.generating_image': '绘画中...',
   'editor.draft_mode': '草稿模式',
+  'editor.opening_scene': '开篇',
 
   // Modal - New Project
   'modal.new_project.title': '创建新项目',
@@ -331,6 +358,31 @@ const zh: Translations = {
   'modal.new_project.generating': '正在生成开篇...',
   'modal.new_project.cancel': '取消',
   'modal.new_project.writing_lang': '写作语言 (AI输出)',
+  'modal.new_project.advanced_settings': '高级设置（可选）',
+  'modal.new_project.description': '故事简介',
+  'modal.new_project.description_placeholder': '简要描述您的故事...',
+  'modal.new_project.target_audience': '目标读者',
+  'modal.new_project.narrative_perspective': '叙事视角',
+  'modal.new_project.writing_tone': '写作风格',
+
+  // Audience options
+  'audience.general': '大众读者',
+  'audience.young_adult': '青少年',
+  'audience.adult': '成人',
+  'audience.children': '儿童',
+
+  // Perspective options
+  'perspective.first_person': '第一人称（我）',
+  'perspective.third_limited': '第三人称限制视角',
+  'perspective.third_omniscient': '第三人称全知视角',
+  'perspective.second_person': '第二人称（你）',
+
+  // Tone options
+  'tone.conversational': '对话式',
+  'tone.formal': '正式',
+  'tone.poetic': '诗意',
+  'tone.casual': '随意',
+  'tone.academic': '学术',
 
   // History Modal
   'history.title': '项目快照 (History)',

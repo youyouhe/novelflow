@@ -40,13 +40,58 @@ export interface Snapshot {
 
 export type WritingLanguage = 'en' | 'zh' | 'ja' | 'ko' | 'es' | 'fr' | 'de' | 'it' | 'ru' | 'pt';
 
+// Novel Structure Types
+export type NarrativePerspective =
+  | 'first_person'
+  | 'third_person_limited'
+  | 'third_person_omniscient'
+  | 'second_person';
+
+export type TargetAudience =
+  | 'children'
+  | 'young_adult'
+  | 'adult'
+  | 'general';
+
+export type WritingTone =
+  | 'formal'
+  | 'casual'
+  | 'poetic'
+  | 'conversational'
+  | 'academic';
+
+export type StoryTheme =
+  | 'adventure'
+  | 'romance'
+  | 'mystery'
+  | 'horror'
+  | 'comedy'
+  | 'drama'
+  | 'coming_of_age'
+  | 'revenge'
+  | 'redemption'
+  | 'betrayal'
+  | 'friendship'
+  | 'family'
+  | 'war'
+  | 'political'
+  | 'psychological';
+
 export interface Project {
   id: string;
   title: string;
   author: string;
-  genre?: string;
-  subgenre?: string;
+  genre: string;        // Required for story context
+  subgenre: string;     // Required for story context
   writingLanguage: WritingLanguage;
+
+  // Optional novel structure metadata
+  description?: string;           // Brief project synopsis
+  targetAudience?: TargetAudience;
+  narrativePerspective?: NarrativePerspective;
+  writingTone?: WritingTone;
+  themes?: StoryTheme[];          // Story themes/genres
+
   chapters: Chapter[];
   codex: CodexEntry[];
   snapshots?: Snapshot[];
@@ -58,8 +103,14 @@ export interface ProjectMetadata {
   id: string;
   title: string;
   author: string;
-  genre?: string;
-  subgenre?: string;
+  genre: string;        // Required
+  subgenre: string;     // Required
+
+  // Optional display fields
+  description?: string;
+  targetAudience?: TargetAudience;
+  narrativePerspective?: NarrativePerspective;
+
   writingLanguage: WritingLanguage;
   lastModified: number;
   wordCount: number;
@@ -176,6 +227,14 @@ export interface StoryStructureContext {
     projectTitle: string;
     genre: string;
     subgenre?: string;
+
+    // Optional style and audience context
+    description?: string;
+    targetAudience?: TargetAudience;
+    narrativePerspective?: NarrativePerspective;
+    writingTone?: WritingTone;
+    themes?: StoryTheme[];
+
     chapterTitle: string;
     sceneTitle: string;
     sceneIndex: number; // 0-based index
@@ -184,4 +243,13 @@ export interface StoryStructureContext {
     currentSceneWordCount?: number; // Added for pacing control
     currentScenePageCount?: number; // Added for pacing control
     currentPageIndex?: number; // Current page being edited (0-based)
+    targetSceneWordCount?: number; // Target words per scene for pacing control
+    targetScenesPerChapter?: number; // Target scenes per chapter for pacing control
+}
+
+export interface SceneReference {
+    chapterTitle: string;
+    sceneIndex: number;
+    scene: Scene;
+    displayText: string;
 }

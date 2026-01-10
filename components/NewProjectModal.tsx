@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { GENRE_TEMPLATES } from '../constants';
 import { useI18n } from '../i18n';
-import { Project, WritingLanguage, AIConfig } from '../types';
+import { Project, WritingLanguage, AIConfig, NarrativePerspective, TargetAudience, WritingTone } from '../types';
 import { useTheme } from '../theme';
 import { generateNovelOpening } from '../services/aiService';
 
@@ -21,6 +21,13 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreate, ai
   const [selectedSubgenre, setSelectedSubgenre] = useState('');
   const [writingLanguage, setWritingLanguage] = useState<WritingLanguage>('en');
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Advanced settings state
+  const [description, setDescription] = useState('');
+  const [targetAudience, setTargetAudience] = useState<TargetAudience>('general');
+  const [narrativePerspective, setNarrativePerspective] = useState<NarrativePerspective>('third_person_limited');
+  const [writingTone, setWritingTone] = useState<WritingTone>('conversational');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const selectedTemplate = GENRE_TEMPLATES.find(g => g.id === selectedGenreId);
 
@@ -72,9 +79,13 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreate, ai
       id: `proj_${Date.now()}`,
       title,
       author,
-      genre: selectedTemplate?.name[language],
-      subgenre: selectedTemplate?.subcategories.find(s => s.zh === selectedSubgenre || s.en === selectedSubgenre)?.[language] || selectedSubgenre,
+      genre: selectedTemplate?.name[language] || 'Fiction',
+      subgenre: selectedTemplate?.subcategories.find(s => s.zh === selectedSubgenre || s.en === selectedSubgenre)?.[language] || selectedSubgenre || 'General',
       writingLanguage,
+      description: description || undefined,
+      targetAudience,
+      narrativePerspective,
+      writingTone,
       chapters: [
         {
           id: `chap_${Date.now()}`,
@@ -181,7 +192,89 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreate, ai
                </select>
             </div>
           </div>
-          
+
+          {/* Advanced Settings Toggle */}
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full text-left px-2 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 flex items-center gap-2 transition-colors"
+            >
+              <span>{showAdvanced ? '▼' : '▶'}</span>
+              <span>{t('modal.new_project.advanced_settings') || 'Advanced Settings (Optional)'}</span>
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-4 space-y-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    {t('modal.new_project.description') || 'Story Synopsis'}
+                  </label>
+                  <textarea
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    placeholder={t('modal.new_project.description_placeholder') || 'Brief description of your story...'}
+                    rows={2}
+                  />
+                </div>
+
+                {/* Target Audience */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    {t('modal.new_project.target_audience') || 'Target Audience'}
+                  </label>
+                  <select
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none"
+                    value={targetAudience}
+                    onChange={e => setTargetAudience(e.target.value as TargetAudience)}
+                  >
+                    <option value="general">{t('audience.general') || 'General Audience'}</option>
+                    <option value="young_adult">{t('audience.young_adult') || 'Young Adult'}</option>
+                    <option value="adult">{t('audience.adult') || 'Adult'}</option>
+                    <option value="children">{t('audience.children') || 'Children'}</option>
+                  </select>
+                </div>
+
+                {/* Narrative Perspective */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    {t('modal.new_project.narrative_perspective') || 'Narrative Perspective'}
+                  </label>
+                  <select
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none"
+                    value={narrativePerspective}
+                    onChange={e => setNarrativePerspective(e.target.value as NarrativePerspective)}
+                  >
+                    <option value="third_person_limited">{t('perspective.third_limited') || 'Third Person Limited'}</option>
+                    <option value="first_person">{t('perspective.first_person') || 'First Person (I)'}</option>
+                    <option value="third_person_omniscient">{t('perspective.third_omniscient') || 'Third Person Omniscient'}</option>
+                    <option value="second_person">{t('perspective.second_person') || 'Second Person (You)'}</option>
+                  </select>
+                </div>
+
+                {/* Writing Tone */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    {t('modal.new_project.writing_tone') || 'Writing Tone'}
+                  </label>
+                  <select
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none"
+                    value={writingTone}
+                    onChange={e => setWritingTone(e.target.value as WritingTone)}
+                  >
+                    <option value="conversational">{t('tone.conversational') || 'Conversational'}</option>
+                    <option value="formal">{t('tone.formal') || 'Formal'}</option>
+                    <option value="poetic">{t('tone.poetic') || 'Poetic'}</option>
+                    <option value="casual">{t('tone.casual') || 'Casual'}</option>
+                    <option value="academic">{t('tone.academic') || 'Academic'}</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
           {aiConfig?.generateOpeningWithAI && (
              <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 p-2 rounded">
                 🤖 AI Generation Active: The opening scene will be uniquely generated based on your title and genre.

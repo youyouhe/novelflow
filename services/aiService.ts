@@ -1,18 +1,89 @@
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import { CodexEntry, ChatMessage, WritingLanguage, AIConfig, SmartContinuationResponse, StoryStructureContext, CodexCategory, Scene, Chapter } from "../types";
+import { CodexEntry, ChatMessage, WritingLanguage, AIConfig, SmartContinuationResponse, StoryStructureContext, CodexCategory, Scene, Chapter, SceneReference } from "../types";
 import { AI_LENGTHS, AI_CONTEXT_SIZES, AI_CONTINUATION_MODES } from "../constants";
+
+const SCENE_REF_REGEX = /@([^.]+)(?:\.([^@\s]+))?/g;
 
 // Helper to format codex
 const formatCodexForAI = (codex: CodexEntry[]): string => {
   if (codex.length === 0) return "No Codex entries available.";
-  
+
   return codex.map(entry => `
     [Category: ${entry.category}]
     Name: ${entry.name}
     Description: ${entry.description}
     Tags: ${entry.tags.join(', ')}
   `).join('\n---\n');
+};
+
+export const parseSceneReferences = (
+  message: string,
+  chapters: Chapter[]
+): { references: SceneReference[]; cleanedMessage: string } => {
+  const references: SceneReference[] = [];
+  const matches = [...message.matchAll(SCENE_REF_REGEX)];
+
+  for (const match of matches) {
+    const [fullMatch, chapterPart, scenePart] = match;
+
+    const chapter = chapters.find(c =>
+      c.title.toLowerCase().includes(chapterPart.toLowerCase()) ||
+      c.title === chapterPart
+    );
+
+    if (chapter) {
+      if (scenePart) {
+        const sceneIndexMatch = scenePart.match(/第?(\d+)/);
+        let scene: Scene | undefined;
+
+        if (sceneIndexMatch) {
+          const idx = parseInt(sceneIndexMatch[1]) - 1;
+          if (idx >= 0 && idx < chapter.scenes.length) {
+            scene = chapter.scenes[idx];
+          }
+        } else {
+          scene = chapter.scenes.find(s =>
+            s.title.toLowerCase().includes(scenePart.toLowerCase())
+          );
+        }
+
+        if (scene) {
+          const sceneIndex = chapter.scenes.findIndex(s => s.id === scene!.id);
+          references.push({
+            chapterTitle: chapter.title,
+            sceneIndex,
+            scene,
+            displayText: fullMatch
+          });
+        }
+      } else {
+        if (chapter.scenes.length > 0) {
+          references.push({
+            chapterTitle: chapter.title,
+            sceneIndex: 0,
+            scene: chapter.scenes[0],
+            displayText: fullMatch
+          });
+        }
+      }
+    }
+  }
+
+  return { references, cleanedMessage: message };
+};
+
+export const formatSceneReferences = (
+  references: SceneReference[]
+): string => {
+  if (references.length === 0) return '';
+
+  return references.map(ref =>
+    `=== REFERENCED SCENE: ${ref.scene.title} ===
+Chapter: ${ref.chapterTitle} (Scene ${ref.sceneIndex + 1})
+Content: ${ref.scene.content.slice(-4000)}
+`
+  ).join('\n');
 };
 
 const getLangInstruction = (lang: WritingLanguage): string => {
@@ -31,23 +102,121 @@ const getLangInstruction = (lang: WritingLanguage): string => {
     return `IMPORTANT: You MUST write the output in ${map[lang] || 'English'}.`;
 }
 
+// Get genre-specific writing style guidance
+const getGenreStyleGuidance = (genre: string, subgenre?: string): string => {
+  const genreMap: Record<string, string> = {
+    'Fantasy': 'Focus on world-building, magical systems, and epic scales. Use descriptive language for settings and magical effects. Include sensory details for immersive fantasy environments.',
+    '玄幻奇幻': '注重世界构建、魔法系统和宏大叙事。使用描述性语言描绘场景和魔法效果。加入感官细节营造沉浸式的奇幻环境。',
+    'Xianxia/Wuxia': 'Emphasize cultivation progress, martial arts techniques, and philosophical concepts. Use poetic descriptions of energy flow (qi) and combat sequences. Include references to cultivation realms and techniques.',
+    '仙侠武侠': '强调修为进境、功法体系和哲学理念。使用诗意化的语言描述气机流动和战斗场面。提及境界、功法等修真术语。',
+    'Urban': 'Balance contemporary realism with genre elements. Focus on character relationships, modern urban settings, and relatable situations.',
+    '都市': '平衡现代现实主义与题材元素。注重人物关系、现代都市环境和贴近生活的情境。',
+    'Sci-Fi/Apocalypse': 'Include technological or scientific details. Maintain logical consistency in world rules. Use precise language when describing technology. Consider implications of scientific advances.',
+    '科幻': '包含技术或科学细节。保持世界规则的逻辑一致性。使用精确的语言描述技术。考虑科学进步的影响。',
+    'Suspense/Mystery': 'Build tension gradually. Use foreshadowing and red herrings. Maintain ambiguity and uncertainty. Reveal information strategically to maintain suspense.',
+    '悬疑': '逐步建立紧张感。使用伏笔和误导。保持模糊和不确定性。策略性地揭示信息以维持悬念。',
+    'History/Military': 'Use period-appropriate language. Focus on tactical details, historical context, and authentic cultural elements. Maintain formal or dignified tone when appropriate.',
+    '历史军事': '使用符合时代特征的语言。注重战术细节、历史背景和真实的文化元素。适当时候保持正式或庄重的基调。',
+    'Game/Sports': 'Include technical terminology relevant to the game/sport. Focus on action sequences, strategy, and competition. Use dynamic, energetic language.',
+    '游戏竞技': '包含相关技术术语。注重动作场面、策略和竞争。使用动态、有活力的语言。',
+    'Light Novel': 'Use conversational, informal tone. Include internal monologues and character reactions. Emphasize dialogue and character interactions. Light, accessible prose.',
+    '轻小说': '使用对话式、非正式的语调。包含内心独白和角色反应。强调对话和人物互动。轻松易懂的散文风格。'
+  };
+
+  const baseGuidance = genreMap[genre] || 'Write in a style appropriate for the genre.';
+
+  // Subgenre-specific guidance (Chinese-focused for now)
+  const subgenreGuidance: Record<string, string> = {
+    '异世争霸': 'Focus on power progression, territory building, and strategic warfare. Include details about cultivation ranks, magical beasts, and resource management.',
+    '魔法校园': 'Emphasize school life, magical learning, and friendship dynamics. Include classroom scenes, magical exams, and coming-of-age themes.',
+    '职场商战': 'Focus on business strategy, office politics, and professional relationships. Realistic depiction of corporate environments.',
+    '豪门总裁': 'Emphasize power dynamics, wealth display, and romantic tension between powerful protagonists.',
+    '穿越重生': 'Balance knowledge from the protagonist\'s previous life with the new world\'s rules. Highlight the advantages of foresight.',
+    '灵异悬疑': 'Build supernatural tension through unexplained phenomena. Create atmosphere of mystery and fear.'
+  };
+
+  if (subgenre && subgenreGuidance[subgenre]) {
+    return `${baseGuidance}\n\nSubgenre Specific: ${subgenreGuidance[subgenre]}`;
+  }
+
+  return baseGuidance;
+}
+
 // Prepare Structure Context
 const formatStructureContext = (struct?: StoryStructureContext): string => {
     if (!struct) return "";
-    const currentPageInfo = struct.currentPageIndex !== undefined 
-        ? `Currently Editing: Page ${struct.currentPageIndex + 1} of ${struct.currentScenePageCount ?? 0}`
-        : '';
-    return `
-    === STORY STRUCTURE ===
-    Project: ${struct.projectTitle}
-    Genre: ${struct.genre} ${struct.subgenre ? `(${struct.subgenre})` : ''}
-    Current Chapter: ${struct.chapterTitle}
-    Current Scene: ${struct.sceneTitle} (Scene ${struct.sceneIndex + 1} of ${struct.totalScenesInChapter} in this chapter)
-    Current Scene Stats: ${struct.currentSceneWordCount ?? 0} words, ${struct.currentScenePageCount ?? 0} pages.
-    ${currentPageInfo ? `${currentPageInfo}.` : ''}
-    ${struct.previousSceneSummary ? `Previous Scene Summary: ${struct.previousSceneSummary}` : ''}
-    =======================
-    `;
+
+    const lines: string[] = [
+      "=== STORY STRUCTURE & STYLE ===",
+      `Project: ${struct.projectTitle}`,
+      `Genre: ${struct.genre}${struct.subgenre ? ` (${struct.subgenre})` : ''}`
+    ];
+
+    // New context fields
+    if (struct.targetAudience) {
+      const audienceMap: Record<string, string> = {
+        'children': 'Children (ages 8-12)',
+        'young_adult': 'Young Adult (ages 12-18)',
+        'adult': 'Adult (ages 18+)',
+        'general': 'General Audience'
+      };
+      lines.push(`Target Audience: ${audienceMap[struct.targetAudience] || struct.targetAudience}`);
+    }
+
+    if (struct.narrativePerspective) {
+      const perspectiveMap: Record<string, string> = {
+        'first_person': 'First Person (I, my)',
+        'third_person_limited': 'Third Person Limited (he/she/they - one character)',
+        'third_person_omniscient': 'Third Person Omniscient (all-knowing)',
+        'second_person': 'Second Person (you)'
+      };
+      lines.push(`Narrative Perspective: ${perspectiveMap[struct.narrativePerspective] || struct.narrativePerspective}`);
+    }
+
+    if (struct.writingTone) {
+      lines.push(`Writing Tone: ${struct.writingTone}`);
+    }
+
+    if (struct.themes && struct.themes.length > 0) {
+      lines.push(`Themes: ${struct.themes.join(', ')}`);
+    }
+
+    if (struct.description) {
+      lines.push(`Story Synopsis: ${struct.description}`);
+    }
+
+    // Original context
+    lines.push(`Current Chapter: ${struct.chapterTitle}`);
+    lines.push(`Current Scene: ${struct.sceneTitle} (Scene ${struct.sceneIndex + 1} of ${struct.totalScenesInChapter} in this chapter)`);
+
+    if (struct.targetScenesPerChapter) {
+      const sceneStatus = struct.totalScenesInChapter > struct.targetScenesPerChapter
+        ? ` ⚠️ OVER TARGET (exceeds by ${struct.totalScenesInChapter - struct.targetScenesPerChapter})`
+        : ` (Target: ${struct.targetScenesPerChapter})`;
+      lines.push(`Target Scenes per Chapter: ${struct.targetScenesPerChapter} (Current: ${struct.totalScenesInChapter}${sceneStatus})`);
+    }
+
+    if (struct.targetSceneWordCount) {
+      const currentWords = struct.currentSceneWordCount ?? 0;
+      const wordStatus = currentWords > struct.targetSceneWordCount
+        ? ` ⚠️ EXCEEDS TARGET (${Math.round((currentWords / struct.targetSceneWordCount - 1) * 100)}% over)`
+        : ` (${Math.round((currentWords / struct.targetSceneWordCount) * 100)}% of target)`;
+      lines.push(`Target Words per Scene: ${struct.targetSceneWordCount} (Current: ${currentWords}${wordStatus})`);
+    }
+
+    lines.push(`Current Scene Stats: ${struct.currentSceneWordCount ?? 0} words, ${struct.currentScenePageCount ?? 0} pages.`);
+
+    if (struct.currentPageIndex !== undefined) {
+      lines.push(`Currently Editing: Page ${struct.currentPageIndex + 1} of ${struct.currentScenePageCount ?? 0}`);
+    }
+
+    if (struct.previousSceneSummary) {
+      lines.push(`Previous Scene Summary: ${struct.previousSceneSummary}`);
+    }
+
+    lines.push("===============================");
+
+    return lines.join('\n');
 }
 
 const decideActionType = async (
@@ -71,15 +240,15 @@ const decideActionType = async (
         
         let pacingInstruction = "";
         const targetChapterWords = targetSceneWords * targetScenesPerChapter;
-        
+
         if (wordCount > targetChapterWords * 1.5 || totalScenes > targetScenesPerChapter * 1.5) {
-            pacingInstruction = `PACING ALERT: This chapter is extremely long (>${Math.floor(targetChapterWords * 1.5)} words or >${Math.floor(targetScenesPerChapter * 1.5)} scenes). Strongly recommend 'new_chapter'.`;
+            pacingInstruction = `CRITICAL PACING WARNING: This chapter is extremely long (${totalScenes} scenes, ${Math.round(wordCount)} words). Target is ${targetScenesPerChapter} scenes or ${targetChapterWords} words. You MUST output 'new_chapter' to start a fresh chapter.`;
         } else if (wordCount > targetChapterWords || totalScenes > targetScenesPerChapter) {
-            pacingInstruction = `PACING GUIDE: This chapter is getting long (>${targetChapterWords} words or >${targetScenesPerChapter} scenes). Consider 'new_chapter'.`;
+            pacingInstruction = `PACING ALERT: This chapter has exceeded target (${totalScenes} scenes > ${targetScenesPerChapter} scenes, or ${Math.round(wordCount)} words > ${targetChapterWords} words). You MUST output 'new_chapter' to start a fresh chapter.`;
         } else if (wordCount > targetSceneWords * 1.25) {
-            pacingInstruction = `PACING ALERT: The current scene is very long (>${Math.floor(targetSceneWords * 1.25)} words). Strongly recommend 'new_scene'.`;
+            pacingInstruction = `PACING ALERT: The current scene is very long (${Math.round(wordCount)} words > target ${Math.floor(targetSceneWords * 1.25)} words). Unless this is a climactic moment, you MUST output 'new_scene' to conclude the scene.`;
         } else if (wordCount > targetSceneWords * 0.75) {
-            pacingInstruction = `PACING GUIDE: The current scene is getting long (>${Math.floor(targetSceneWords * 0.75)} words). Consider 'new_scene'.`;
+            pacingInstruction = `PACING GUIDE: The current scene is getting long (${Math.round(wordCount)} words). Consider 'new_scene' if the scene's conflict is resolved.`;
         } else {
             pacingInstruction = "PACING GUIDE: The current scene is still developing. 'continue' unless there's a time jump or location change.";
         }
@@ -110,13 +279,22 @@ const decideActionType = async (
         ${codexContext}`;
 
         const limitedText = sliceContextByConfig(currentText, config);
-        
+
         const userPrompt = `
         Current Story Context (truncated):
         "${limitedText}"
 
-        Task: Based on the story context and criteria above, determine the most appropriate next action.
-        
+        Structural Status:
+        - Current Scene: ${structureContext?.sceneTitle || 'Unknown'} (Scene ${structureContext?.sceneIndex + 1 || 1} of ${structureContext?.totalScenesInChapter || 1})
+        - Target Scenes per Chapter: ${targetScenesPerChapter}
+        - Current Scenes in Chapter: ${totalScenes}
+        ${totalScenes > targetScenesPerChapter ? '⚠️ CRITICAL: Chapter has EXCEEDED target scene count. You MUST output new_chapter.' : ''}
+        - Target Words per Scene: ${targetSceneWords}
+        - Current Scene Words: ${Math.round(wordCount)}
+        ${wordCount > targetSceneWords ? `⚠️ Current scene EXCEEDS target word count.` : ''}
+
+        Task: Based on the story context, structural status, and PACING GUIDE above, determine the most appropriate next action.
+
         Respond with EXACTLY ONE word only (no explanation, no punctuation):
         continue
         new_scene
@@ -416,43 +594,56 @@ export const generateSmartContinuation = async (
         let pacingInstruction = "";
 
         const targetChapterWords = targetSceneWords * targetScenesPerChapter;
-        
+
         if (wordCount > targetChapterWords * 1.5 || totalScenes > targetScenesPerChapter * 1.5) {
-            pacingInstruction = `PACING ALERT: This chapter is extremely long (>${Math.floor(targetChapterWords * 1.5)} words or >${Math.floor(targetScenesPerChapter * 1.5)} scenes). You MUST conclude the current narrative arc and output 'new_chapter' to start a fresh chapter.`;
+            pacingInstruction = `CRITICAL PACING WARNING: This chapter is extremely long (${totalScenes} scenes, ${Math.round(wordCount)} words). Target is ${targetScenesPerChapter} scenes or ${targetChapterWords} words. You MUST conclude the current narrative arc and output 'new_chapter' to start a fresh chapter.`;
         } else if (wordCount > targetChapterWords || totalScenes > targetScenesPerChapter) {
-            pacingInstruction = `PACING GUIDE: This chapter is getting long (>${targetChapterWords} words or >${targetScenesPerChapter} scenes). Look for opportunities to conclude the current arc and transition to a 'new_chapter'.`;
+            pacingInstruction = `PACING ALERT: This chapter has exceeded target (${totalScenes} scenes > ${targetScenesPerChapter} scenes, or ${Math.round(wordCount)} words > ${targetChapterWords} words). You MUST look for opportunities to conclude the current arc and output 'new_chapter'.`;
         } else if (wordCount > targetSceneWords * 1.25) {
-            pacingInstruction = `PACING ALERT: The current scene is very long (>${Math.floor(targetSceneWords * 1.25)} words). Unless this is a climactic moment, you should aggressively move to wrap up the scene and output 'new_scene'.`;
+            pacingInstruction = `PACING ALERT: The current scene is very long (${Math.round(wordCount)} words > target ${Math.floor(targetSceneWords * 1.25)} words). Unless this is a climactic moment, you MUST aggressively wrap up the scene and output 'new_scene'.`;
         } else if (wordCount > targetSceneWords * 0.75) {
-            pacingInstruction = `PACING GUIDE: The current scene is getting long (>${Math.floor(targetSceneWords * 0.75)} words). Look for opportunities to conclude the scene and transition to a 'new_scene'.`;
+            pacingInstruction = `PACING GUIDE: The current scene is getting long (${Math.round(wordCount)} words). Look for opportunities to conclude the scene and transition to 'new_scene'.`;
         } else {
             pacingInstruction = "PACING GUIDE: The current scene is still developing. Continue naturally, but if a time jump or location change is needed, use 'new_scene'.";
         }
 
         const systemPrompt = `You are a smart novel writing assistant.
-        Generate content based on the determined action.
-        
-        DETERMINED ACTION: ${determinedAction}
-        
-        Action Guidelines:
-        1. 'continue': Continue the current scene naturally.
-        2. 'new_scene': Gracefully conclude the current scene, then start a NEW SCENE with proper transition.
-        3. 'new_chapter': Conclude the current narrative arc, then start a NEW CHAPTER with a title.
-        
-        ${structContext}
-        ${pacingInstruction}
 
-        ${langInstruction}
-        ${lengthInstruction}
-        ${ignoreLength ? "NOTE: For this continuation mode, you are NOT constrained by a specific word count. Generate as much or as little as needed for the scene." : ""}
-        
-        CRITICAL FORMATTING RULES:
-        - When generating 'content', strictly use DOUBLE LINE BREAKS (\\n\\n) to separate paragraphs.
-        - Start EVERY paragraph in 'content' with ${indentSpaces} spaces.
-        - Ensure the output is readable and not a dense block of text.
-        
-        === CODEX ===
-        ${codexContext}`;
+${getGenreStyleGuidance(structureContext?.genre || 'Fiction', structureContext?.subgenre)}
+
+Generate content based on the determined action.
+
+DETERMINED ACTION: ${determinedAction}
+
+Action Guidelines:
+1. 'continue': Continue the current scene naturally.
+2. 'new_scene': Gracefully conclude the current scene, then start a NEW SCENE with proper transition. You MUST provide a descriptive, creative title for the new scene (e.g., "The Midnight Encounter", "Into the Forest", "Revelations at Dawn").
+3. 'new_chapter': Conclude the current narrative arc, then start a NEW CHAPTER with a title. You MUST provide a compelling chapter title (e.g., "Chapter 2: The Awakening", "The Hidden Truth").
+
+${structContext}
+${pacingInstruction}
+
+${langInstruction}
+${lengthInstruction}
+${ignoreLength ? "NOTE: For this continuation mode, you are NOT constrained by a specific word count. Generate as much or as little as needed for the scene." : ""}
+
+${structureContext?.narrativePerspective ? `CRITICAL: Maintain consistent ${structureContext.narrativePerspective} perspective throughout. Do not switch perspectives.` : ''}
+
+${structureContext?.writingTone ? `Use a ${structureContext.writingTone} writing tone throughout the content.` : ''}
+
+${structureContext?.themes && structureContext.themes.length > 0 ? `Explore these themes naturally in your writing: ${structureContext.themes.join(', ')}.` : ''}
+
+CRITICAL FORMATTING RULES:
+- When generating 'content', strictly use DOUBLE LINE BREAKS (\\n\\n) to separate paragraphs.
+- Start EVERY paragraph in 'content' with ${indentSpaces} spaces.
+- Ensure the output is readable and not a dense block of text.
+
+TITLE REQUIREMENTS:
+- For 'new_scene': The 'title' field MUST be a descriptive scene title (2-6 words), not generic like "New Scene" or "Scene 2".
+- For 'new_chapter': The 'title' field MUST include the chapter number (e.g., "Chapter 3: ...") and be compelling.
+
+=== CODEX ===
+${codexContext}`;
 
         const userPrompt = `
         Current Story Context:
@@ -485,16 +676,16 @@ export const generateSmartContinuation = async (
                     responseSchema: {
                         type: Type.OBJECT,
                         properties: {
-                            action: { 
-                                type: Type.STRING, 
+                            action: {
+                                type: Type.STRING,
                                 enum: ["continue", "new_scene", "new_chapter"],
                                 description: "Whether to continue text, or create a new scene/chapter."
                             },
-                            title: { 
+                            title: {
                                 type: Type.STRING,
-                                description: "The title of the new scene or chapter (if applicable)."
+                                description: "REQUIRED for new_scene/new_chapter: A creative, descriptive title (e.g., 'The Midnight Encounter' for scenes, 'Chapter 2: The Awakening' for chapters). NEVER use generic titles like 'New Scene'."
                             },
-                            content: { 
+                            content: {
                                 type: Type.STRING,
                                 description: `The generated story content. MUST use \\n\\n for paragraph breaks and start each paragraph with ${indentSpaces} spaces.`
                             },
@@ -528,12 +719,26 @@ export const chatWithCodex = async (
   codex: CodexEntry[],
   language: WritingLanguage = 'en',
   config: AIConfig,
+  projectInfo?: { title?: string; genre?: string; subgenre?: string; description?: string },
+  structureContext?: StoryStructureContext,
   activeScene?: Scene,
-  activeChapter?: Chapter
+  activeChapter?: Chapter,
+  allChapters?: Chapter[]
 ): Promise<string> => {
   try {
     const codexContext = formatCodexForAI(codex);
     const langInstruction = getLangInstruction(language);
+
+    const { references } = parseSceneReferences(newMessage, allChapters || []);
+
+    // Project basic info
+    const projectInfoStr = projectInfo ? `
+    === PROJECT INFO ===
+    Title: ${projectInfo.title || 'Untitled'}
+    ${projectInfo.genre ? `Genre: ${projectInfo.genre}${projectInfo.subgenre ? ` (${projectInfo.subgenre})` : ''}` : ''}
+    ${projectInfo.description ? `Description: ${projectInfo.description}` : ''}
+    ===================
+    ` : '';
 
     // Prepare active scene context (limit to recent context to save tokens)
     let sceneContext = "";
@@ -549,18 +754,26 @@ export const chatWithCodex = async (
         `;
     }
 
+    // Use formatStructureContext if available
+    const structContext = structureContext ? formatStructureContext(structureContext) : '';
+
+    const referencedContext = formatSceneReferences(references);
+
     const systemPrompt = `You are a helpful writing assistant (co-author).
     ${langInstruction}
-    
-    ${sceneContext}
+
+    ${projectInfoStr}
+    ${structContext || sceneContext}
+    ${referencedContext}
 
     === CODEX (WORLD BIBLE) ===
     ${codexContext}
-    
+
     Instructions:
-    1. Answer questions based on the Codex and the Current Writing Context provided above.
-    2. If the user asks to rewrite something, use the context provided.
-    3. Keep answers concise unless asked for elaboration.
+    1. Answer questions based on the Project Info, Story Structure, Codex, Current Writing Context, and any Referenced Scenes provided above.
+    2. If the user asks about the novel's title, genre, or premise, use the Project Info.
+    3. If the user asks to rewrite something, use the context provided.
+    4. Keep answers concise unless asked for elaboration.
     `;
 
     if (config.provider === 'deepseek') {
